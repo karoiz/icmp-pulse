@@ -171,7 +171,7 @@ A decreasing interface counter means a reset (no negative difference is computed
 | Event | Condition |
 |---|---|
 | new router | first packet with a given key (or name in plaintext mode) |
-| UPLINK DOWN / UP again | no packets from the uplink for `3 × probe_interval + 12 s` / 2 consecutive packets |
+| UPLINK DOWN / UP again | no packets from the uplink for `3 × probe_interval + 12 s` / first packet over the uplink |
 | ROUTER DOWN / BACK | every uplink has timed out, each by its own `3 × probe_interval + 12 s` (with an LTE backup probed every 60 s a fully silent router is reported after ~3 min) / first packet |
 | ROUTER REBOOTED | `kboot_id` changed |
 | icmp-pulse restarted | `boot_id` changed with the same `kboot_id` |

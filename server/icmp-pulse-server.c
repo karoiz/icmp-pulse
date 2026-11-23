@@ -53,7 +53,6 @@
 #define MAX_ENDED     64
 #define MISS_LIMIT    3
 #define MARGIN_S      12
-#define RECOVER_PKTS  2
 #define REPLAY_WIN    64
 #define MEM_HI        9000    /* % x 100 */
 #define MEM_LO        8500
@@ -74,7 +73,7 @@ struct srv_link {
 	char     name[LG_IFNAME_LEN + 1];
 	uint16_t interval_s;
 	time_t   last_seen;
-	int      down, good;
+	int      down;
 	char     src[INET_ADDRSTRLEN];
 	int      hops_fwd, hops_back;           /* -1 = unknown */
 	int      pend_fwd, pend_fwd_n, pend_back, pend_back_n;
@@ -617,10 +616,10 @@ static void handle_packet(const uint8_t *data, size_t len, const char *src, int 
 			EVENT("%s: %s PPPoE session re-established", r->name, pk.ifs[i].name);
 
 	l->interval_s = pk.probe_interval_s ? pk.probe_interval_s : 10;
-	if (l->down && ++l->good >= RECOVER_PKTS) {
+	/* a packet received over the uplink proves it works: recover at once */
+	if (l->down) {
 		EVENT("%s: uplink %s UP again", r->name, l->name);
 		l->down = 0;
-		l->good = 0;
 	}
 	if (strcmp(l->src, src)) {
 		if (l->src[0]) {
@@ -668,16 +667,13 @@ static void check_timeouts(void)
 				n_stale++;
 			if (stale && !l->down) {
 				l->down = 1;
-				l->good = 0;
 				EVENT("%s: UPLINK %s DOWN (%d packets missing, %ld s)",
 				      r->name, l->name, MISS_LIMIT, (long)(now - l->last_seen));
 			}
 		}
 
-		/* router down: every uplink has timed out. Staleness is taken from
-		 * the time of the last packet, not from the "down" flag, so a router
-		 * that just came back (uplinks still waiting for 2 packets) is not
-		 * reported down again. */
+		/* router down: every uplink has timed out (each by its own interval).
+		 * Staleness is taken from the time of the last packet on each uplink. */
 		if (n_used && !r->down && n_stale == n_used) {
 			r->down = 1;
 			EVENT("%s: ROUTER DOWN (no packets for %ld s, all uplinks timed out)",
