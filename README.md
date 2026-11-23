@@ -140,7 +140,7 @@ Requirements:
 ** earth: pppoe-wan PPPoE session re-established, new address 84.40.153.202 -> 84.40.160.17
 ** earth: uplink pppoe-wan route change to server: 12 -> 15 hops
 ** earth: active default route via wwan0
-** earth: UPLINK pppoe-wan DOWN (3 packets missing, 35 s)
+** earth: UPLINK pppoe-wan DOWN (3 packets missing, 42 s)
 ** earth: ROUTER REBOOTED (uptime 42 s)
 ** earth: WARNING conntrack table 15000/16384 (91%)
 ** rejected packets (60 s): unknown key 0, bad tag 3, replayed 1, plaintext 0, malformed 0
@@ -152,7 +152,7 @@ Full list of events: [docs/PROTOCOL.md](docs/PROTOCOL.md), section 11.
 ## 3. Scenarios to try on a router
 | Action on the router | Event on the server |
 |---|---|
-| `ifdown wan` | `pppoe-wan UNKNOWN -> ABSENT`, default route via LTE, after ~35 s uplink `pppoe-wan` down; data keeps coming every 10 s via LTE |
+| `ifdown wan` | `pppoe-wan UNKNOWN -> ABSENT`, default route via LTE, after ~42 s uplink `pppoe-wan` down; data keeps coming every 10 s via LTE |
 | `ifconfig pppoe-wan down` | `pppoe-wan UNKNOWN -> ADMIN_DOWN`, then as above |
 | unplug the WAN cable | `eth1 UP -> NO_CARRIER`, then `pppoe-wan UNKNOWN -> ABSENT` |
 | `reboot` | ROUTER REBOOTED |

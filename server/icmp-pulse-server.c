@@ -52,7 +52,7 @@
 #define MAX_LINKS     (LG_MAX_IF + 1)
 #define MAX_ENDED     64
 #define MISS_LIMIT    3
-#define MARGIN_S      5
+#define MARGIN_S      12
 #define RECOVER_PKTS  2
 #define REPLAY_WIN    64
 #define MEM_HI        9000    /* % x 100 */
@@ -651,35 +651,37 @@ static void check_timeouts(void)
 
 	for (i = 0; i < MAX_ROUTERS; i++) {
 		struct router *r = &routers[i];
-		int min_iv = 0, n_used = 0;
+		int n_used = 0, n_stale = 0;
 		if (!r->used)
 			continue;
+
+		/* every uplink is judged by its own interval */
 		for (j = 0; j < MAX_LINKS; j++) {
 			struct srv_link *l = &r->links[j];
+			int stale;
 			if (!l->used)
 				continue;
-			if (!l->down &&
-			    now - l->last_seen > (time_t)MISS_LIMIT * l->interval_s + MARGIN_S) {
+			n_used++;
+			stale = now - l->last_seen >
+			        (time_t)MISS_LIMIT * l->interval_s + MARGIN_S;
+			if (stale)
+				n_stale++;
+			if (stale && !l->down) {
 				l->down = 1;
 				l->good = 0;
 				EVENT("%s: UPLINK %s DOWN (%d packets missing, %ld s)",
 				      r->name, l->name, MISS_LIMIT, (long)(now - l->last_seen));
 			}
-			n_used++;
-			/* base cadence of the router: when the primary uplink fails the
-			 * client fails over to another one, so as long as any uplink
-			 * works, packets arrive every shortest interval */
-			if (!min_iv || l->interval_s < min_iv)
-				min_iv = l->interval_s;
 		}
-		/* router down: nothing received over any uplink for 3 base periods
-		 * (per-uplink state does not matter here - after an outage uplinks
-		 * return to "up" only after 2 packets) */
-		if (n_used && !r->down &&
-		    now - r->last_seen > (time_t)MISS_LIMIT * min_iv + MARGIN_S) {
+
+		/* router down: every uplink has timed out. Staleness is taken from
+		 * the time of the last packet, not from the "down" flag, so a router
+		 * that just came back (uplinks still waiting for 2 packets) is not
+		 * reported down again. */
+		if (n_used && !r->down && n_stale == n_used) {
 			r->down = 1;
-			EVENT("%s: ROUTER DOWN (no packets for %ld s)", r->name,
-			      (long)(now - r->last_seen));
+			EVENT("%s: ROUTER DOWN (no packets for %ld s, all uplinks timed out)",
+			      r->name, (long)(now - r->last_seen));
 		}
 	}
 
