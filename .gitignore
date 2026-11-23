@@ -53,3 +53,11 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# icmp-pulse build outputs
+client/icmp-pulse
+server/icmp-pulse-server
+tests/proto_test
+
+# Polish documentation: kept locally, not published
+docs/pl/

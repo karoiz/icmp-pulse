@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# systemd unit for icmp-pulse-server: runs as the unprivileged user
+# 'icmp-pulse' with a single capability, CAP_NET_RAW (raw ICMP socket).
+
+[Unit]
+Description=icmp-pulse server - OpenWrt router health receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=icmp-pulse
+Group=icmp-pulse
+ExecStart=/usr/sbin/icmp-pulse-server -k /etc/icmp-pulse/keys -q
+Restart=on-failure
+RestartSec=5
+
+# the only capability needed: raw ICMP socket
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+
+# additional sandboxing: the server never writes to disk
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

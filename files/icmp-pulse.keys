@@ -1,0 +1,6 @@
+# icmp-pulse-server router keys (default path /etc/icmp-pulse/keys).
+# Readable by the service user only: chmod 600.
+# One router per line: key (64 hex characters) and an optional label (no spaces).
+# Generate a key on the router with: icmp-pulse --genkey
+#
+# 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef shop-krakow
