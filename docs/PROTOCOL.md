@@ -165,13 +165,15 @@ If no uplink scheduled in a cycle is healthy, the packet is sent over another up
 | RAM | `(mem_total − mem_avail) / mem_total` |
 | conntrack | `ct_count / ct_max` |
 
+**Outage start and end.** An outage is detected only after several packets are missing, but its start is reported as the time of the **first missing packet**: the last received packet plus the expected spacing (the uplink interval, or the base interval when the uplink was carrying failover traffic; for the whole router the shortest interval). The end is the arrival of the first packet after the outage. Recovery events carry the start, end and duration.
+
 A decreasing interface counter means a reset (no negative difference is computed). On `pppoe-*` it means the session was re-established.
 
 ## 11. Events reported by the server
 | Event | Condition |
 |---|---|
 | new router | first packet with a given key (or name in plaintext mode) |
-| UPLINK DOWN / UP again | no packets from the uplink for `3 × probe_interval + 12 s` / first packet over the uplink |
+| UPLINK DOWN / UP again | no packets from the uplink for `3 × probe_interval + 12 s` / first packet over the uplink; the outage start and duration are reported (see below) |
 | ROUTER DOWN / BACK | every uplink has timed out, each by its own `3 × probe_interval + 12 s` (with an LTE backup probed every 60 s a fully silent router is reported after ~3 min) / first packet |
 | ROUTER REBOOTED | `kboot_id` changed |
 | icmp-pulse restarted | `boot_id` changed with the same `kboot_id` |

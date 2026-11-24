@@ -140,7 +140,8 @@ Requirements:
 ** earth: pppoe-wan PPPoE session re-established, new address 84.40.153.202 -> 84.40.160.17
 ** earth: uplink pppoe-wan route change to server: 12 -> 15 hops
 ** earth: active default route via wwan0
-** earth: UPLINK pppoe-wan DOWN (3 packets missing, 42 s)
+** earth: UPLINK pppoe-wan DOWN since 17:54:02 (last packet 17:53:52, 3 packets missing)
+** earth: uplink pppoe-wan UP again (down 3 min 12 s, 17:54:02 - 17:57:14)
 ** earth: ROUTER REBOOTED (uptime 42 s)
 ** earth: WARNING conntrack table 15000/16384 (91%)
 ** rejected packets (60 s): unknown key 0, bad tag 3, replayed 1, plaintext 0, malformed 0

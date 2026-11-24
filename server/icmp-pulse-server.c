@@ -75,6 +75,8 @@ struct srv_link {
 	time_t   last_seen;
 	int      down;
 	char     src[INET_ADDRSTRLEN];
+	time_t   down_since;                    /* estimated outage start */
+	int      gap;                           /* seconds between the last two packets */
 	int      hops_fwd, hops_back;           /* -1 = unknown */
 	int      pend_fwd, pend_fwd_n, pend_back, pend_back_n;
 };
@@ -105,6 +107,7 @@ struct router {
 	/* state */
 	time_t   last_seen;
 	int      down;
+	time_t   down_since;                    /* estimated outage start */
 	int      mem_hi, ct_hi;
 	uint32_t last_seq;
 	int      have_seq;
@@ -129,6 +132,37 @@ static void ts(char *buf, size_t len)
 {
 	time_t t = time(NULL);
 	strftime(buf, len, "%Y-%m-%d %H:%M:%S", localtime(&t));
+}
+
+/* Wall-clock time of an event: HH:MM:SS, with the date if it is not today. */
+static const char *fmt_time(time_t t, char *buf, size_t len)
+{
+	struct tm a, b;
+	time_t now = time(NULL);
+
+	localtime_r(&t, &a);
+	localtime_r(&now, &b);
+	if (a.tm_year == b.tm_year && a.tm_yday == b.tm_yday)
+		strftime(buf, len, "%H:%M:%S", &a);
+	else
+		strftime(buf, len, "%Y-%m-%d %H:%M:%S", &a);
+	return buf;
+}
+
+/* Duration: "42 s", "3 min 12 s", "2 h 05 min", "3 d 04 h". */
+static const char *fmt_dur(long d, char *buf, size_t len)
+{
+	if (d < 0)
+		d = 0;
+	if (d < 60)
+		snprintf(buf, len, "%ld s", d);
+	else if (d < 3600)
+		snprintf(buf, len, "%ld min %ld s", d / 60, d % 60);
+	else if (d < 86400)
+		snprintf(buf, len, "%ld h %02ld min", d / 3600, (d % 3600) / 60);
+	else
+		snprintf(buf, len, "%ld d %02ld h", d / 86400, (d % 86400) / 3600);
+	return buf;
 }
 
 #define EVENT(fmt, ...) do { char _t[32]; ts(_t, sizeof(_t)); \
@@ -581,7 +615,10 @@ static void handle_packet(const uint8_t *data, size_t len, const char *src, int 
 		r->last_mono = pk.h.mono_ns;
 
 	if (r->down) {
-		EVENT("%s: ROUTER BACK after %ld s", r->name, (long)(now - r->last_seen));
+		char t1[32], t2[32], d[32];
+		EVENT("%s: ROUTER BACK (down %s, %s - %s)", r->name,
+		      fmt_dur((long)(now - r->down_since), d, sizeof(d)),
+		      fmt_time(r->down_since, t1, sizeof(t1)), fmt_time(now, t2, sizeof(t2)));
 		r->down = 0;
 	}
 	r->last_seen = now;
@@ -618,7 +655,10 @@ static void handle_packet(const uint8_t *data, size_t len, const char *src, int 
 	l->interval_s = pk.probe_interval_s ? pk.probe_interval_s : 10;
 	/* a packet received over the uplink proves it works: recover at once */
 	if (l->down) {
-		EVENT("%s: uplink %s UP again", r->name, l->name);
+		char t1[32], t2[32], d[32];
+		EVENT("%s: uplink %s UP again (down %s, %s - %s)", r->name, l->name,
+		      fmt_dur((long)(now - l->down_since), d, sizeof(d)),
+		      fmt_time(l->down_since, t1, sizeof(t1)), fmt_time(now, t2, sizeof(t2)));
 		l->down = 0;
 	}
 	if (strcmp(l->src, src)) {
@@ -632,6 +672,8 @@ static void handle_packet(const uint8_t *data, size_t len, const char *src, int 
 		}
 		snprintf(l->src, sizeof(l->src), "%s", src);
 	}
+	if (l->last_seen && now > l->last_seen)
+		l->gap = (int)(now - l->last_seen);
 	l->last_seen = now;
 
 	hops_update(r->name, l->name, "to server", &l->hops_fwd, &l->pend_fwd,
@@ -650,7 +692,8 @@ static void check_timeouts(void)
 
 	for (i = 0; i < MAX_ROUTERS; i++) {
 		struct router *r = &routers[i];
-		int n_used = 0, n_stale = 0;
+		int n_used = 0, n_stale = 0, min_iv = 0;
+		char t1[32], t2[32];
 		if (!r->used)
 			continue;
 
@@ -661,23 +704,34 @@ static void check_timeouts(void)
 			if (!l->used)
 				continue;
 			n_used++;
+			if (!min_iv || l->interval_s < min_iv)
+				min_iv = l->interval_s;
 			stale = now - l->last_seen >
 			        (time_t)MISS_LIMIT * l->interval_s + MARGIN_S;
 			if (stale)
 				n_stale++;
 			if (stale && !l->down) {
+				/* outage start = first missing packet */
 				l->down = 1;
-				EVENT("%s: UPLINK %s DOWN (%d packets missing, %ld s)",
-				      r->name, l->name, MISS_LIMIT, (long)(now - l->last_seen));
+				/* the expected spacing is the configured interval, or less when
+				 * the uplink was carrying failover traffic */
+				l->down_since = l->last_seen +
+				        ((l->gap > 0 && l->gap < l->interval_s) ? l->gap : l->interval_s);
+				EVENT("%s: UPLINK %s DOWN since %s (last packet %s, %d packets missing)",
+				      r->name, l->name, fmt_time(l->down_since, t1, sizeof(t1)),
+				      fmt_time(l->last_seen, t2, sizeof(t2)), MISS_LIMIT);
 			}
 		}
 
 		/* router down: every uplink has timed out (each by its own interval).
 		 * Staleness is taken from the time of the last packet on each uplink. */
 		if (n_used && !r->down && n_stale == n_used) {
+			/* outage start = first missing packet of the router's base cadence */
 			r->down = 1;
-			EVENT("%s: ROUTER DOWN (no packets for %ld s, all uplinks timed out)",
-			      r->name, (long)(now - r->last_seen));
+			r->down_since = r->last_seen + min_iv;
+			EVENT("%s: ROUTER DOWN since %s (last packet %s, all uplinks timed out)",
+			      r->name, fmt_time(r->down_since, t1, sizeof(t1)),
+			      fmt_time(r->last_seen, t2, sizeof(t2)));
 		}
 	}
 
